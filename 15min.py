@@ -12,7 +12,7 @@ from py_clob_client.order_builder.constants import BUY
 # Configureable parameters
 
 BUY_IN_LAST_X_MINUTES = 5 # For example, if set to 5, buys will be attempted at minutes 10, 25, 40, 55 of each hour.
-SHARES_TO_BUY = 6.0       # The number of shares to buy in a single order.
+SHARES_TO_BUY = 1.0       # The number of shares to buy in a single order.
 BUY_PRICE = 0.99          # The limit price for the buy order.
 CHECK_INTERVAL_SECONDS = 15 # How often the bot checks for new market data.
 
