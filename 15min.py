@@ -53,18 +53,14 @@ def log_message(message):
         print(f"[{timestamp}] CRITICAL: Failed to write to log file: {e}")
 
 def load_credentials():
-    env_path = '.env'
-    if not os.path.exists(env_path):
-        log_message("FATAL: Environment file '.env' not found. Please create it with your PK and FUNDER.")
-        sys.exit(1)
-
-    load_dotenv()
+    load_dotenv()  # Works locally with .env file, ignored on Railway
     private_key = os.getenv("PK")
     funder_address = os.getenv("FUNDER")
 
     if not private_key or not funder_address:
-        log_message("FATAL: Could not find PK and/or FUNDER inside the .env file.")
-        log_message("Please make sure your .env file has the format:\nPK=your_private_key_here\nFUNDER=your_funder_address_here")
+        log_message("FATAL: Could not find PK and/or FUNDER environment variables.")
+        log_message("Locally: create a .env file with PK and FUNDER.")
+        log_message("On Railway: add PK and FUNDER in the Variables tab.")
         sys.exit(1)
 
     return private_key, funder_address
