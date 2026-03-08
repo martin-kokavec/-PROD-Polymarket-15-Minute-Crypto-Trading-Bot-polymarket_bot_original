@@ -16,6 +16,27 @@ SHARES_TO_BUY = 2.0       # The number of shares to buy in a single order.
 BUY_PRICE = 0.99          # The limit price for the buy order.
 CHECK_INTERVAL_SECONDS = 15 # How often the bot checks for new market data.
 
+def claim_winnings(funder_address):
+    try:
+        # Find redeemable positions for your address
+        url = f"https://data-api.polymarket.com/positions?user={funder_address}&redeemable=true&sizeThreshold=.1"
+        response = requests.get(url, timeout=10)
+        response.raise_for_status()
+        positions = response.json()
+
+        if not positions:
+            return  # Nothing to claim
+
+        for pos in positions:
+            title = pos.get("title", "Unknown market")
+            size = pos.get("size", 0)
+            log_message(f"   - 💰 Claimable position found: {title} | {size} shares")
+
+        log_message(f"   - ℹ️ {len(positions)} claimable position(s) found — please claim manually at polymarket.com/portfolio for now.")
+
+    except Exception as e:
+        log_message(f"   - ⚠️ Could not check claimable winnings: {e}")
+
 def log_message(message):
     log_file_name = "bot.log"
     message = str(message).strip()
@@ -138,6 +159,7 @@ def main():
 
     while True:
         try:
+            claim_winnings(funder_address)
             question, market_slug, yes_token, no_token = get_current_polymarket_tokens()
             
             if market_slug:
