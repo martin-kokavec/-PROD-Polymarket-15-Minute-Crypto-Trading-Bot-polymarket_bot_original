@@ -4,6 +4,7 @@ import json
 import time
 import requests
 import datetime
+import pytz
 from dotenv import load_dotenv
 from py_clob_client.client import ClobClient
 from py_clob_client.clob_types import OrderArgs, OrderType
@@ -15,6 +16,51 @@ BUY_IN_LAST_X_MINUTES = 5 # For example, if set to 5, buys will be attempted at 
 SHARES_TO_BUY = 2.0       # The number of shares to buy in a single order.
 BUY_PRICE = 0.99          # The limit price for the buy order.
 CHECK_INTERVAL_SECONDS = 15 # How often the bot checks for new market data.
+
+# Trading hours in Washington DC time (Eastern Time)
+# Each entry is a (start_hour, start_minute, end_hour, end_minute) tuple
+TRADING_WINDOWS = [
+    (1, 15,  8, 15),   # 1:15 AM  - 8:15 AM
+    (13, 15, 17, 45),  # 1:15 PM  - 5:45 PM
+    (18, 45, 20, 15),  # 6:45 PM  - 8:15 PM
+    (23,  0,  0, 45),  # 11:00 PM - 12:45 AM (next day)
+]
+
+TRADING_WINDOWS_DISPLAY = [
+    "1:15 AM  - 8:15 AM",
+    "1:15 PM  - 5:45 PM",
+    "6:45 PM  - 8:15 PM",
+    "11:00 PM - 12:45 AM (next day)",
+]
+
+DC_TZ = pytz.timezone("America/New_York")
+
+
+def is_trading_hours():
+    """Returns True if current Washington DC time is within any trading window."""
+    now_dc = datetime.datetime.now(DC_TZ)
+    now_minutes = now_dc.hour * 60 + now_dc.minute
+
+    for (sh, sm, eh, em) in TRADING_WINDOWS:
+        start = sh * 60 + sm
+        end = eh * 60 + em
+
+        if start <= end:
+            # Normal window (doesn't cross midnight)
+            if start <= now_minutes < end:
+                return True
+        else:
+            # Window crosses midnight (e.g. 23:00 - 00:45)
+            if now_minutes >= start or now_minutes < end:
+                return True
+
+    return False
+
+
+def get_dc_time_str():
+    """Returns current Washington DC time as a readable string."""
+    now_dc = datetime.datetime.now(DC_TZ)
+    return now_dc.strftime("%I:%M %p")
 
 def claim_winnings(funder_address):
     try:
@@ -139,7 +185,7 @@ def get_poly_orderbook_prices(token_id):
 def has_traded_in_interval(last_trade_interval):
     now = datetime.datetime.now()
     current_interval = now.minute // 15
-    
+
     if last_trade_interval == current_interval:
         return True
     return False
@@ -147,17 +193,32 @@ def has_traded_in_interval(last_trade_interval):
 def main():
     log_message("🤖 --- Polymarket 15-Min BTC Auto-Trader Started --- 🤖")
     log_message(f"   - 📈 Will attempt to buy {SHARES_TO_BUY} shares in the last {BUY_IN_LAST_X_MINUTES} minutes of each interval.")
+    log_message(f"   - 🕐 Trading only during Washington DC hours: {' | '.join(TRADING_WINDOWS_DISPLAY)}")
 
     private_key, funder_address = load_credentials()
     clob_client = get_clob_client(private_key, funder_address)
 
     last_trade_interval = -1
+    last_outside_hours_log = None  # Tracks when we last logged the outside-hours message
 
     while True:
         try:
             claim_winnings(funder_address)
+
+            if not is_trading_hours():
+                # Only log once per minute to avoid spamming
+                now_minute = datetime.datetime.now().strftime('%Y-%m-%d %H:%M')
+                if last_outside_hours_log != now_minute:
+                    dc_time = get_dc_time_str()
+                    windows_str = " | ".join(TRADING_WINDOWS_DISPLAY)
+                    log_message(f"⏸️  Now is {dc_time} in Washington DC — trades only during: {windows_str}")
+                    last_outside_hours_log = now_minute
+
+                time.sleep(CHECK_INTERVAL_SECONDS)
+                continue
+
             question, market_slug, yes_token, no_token = get_current_polymarket_tokens()
-            
+
             if market_slug:
                 log_message("--- 💹 Fetching Polymarket Prices 💹 ---")
                 
@@ -185,7 +246,7 @@ def main():
                         else:
                             log_message(f"   - Highest bid is for NO (${no_bid:.3f}). Placing buy order.")
                             trade_successful = place_market_buy_order(clob_client, no_token, SHARES_TO_BUY, BUY_PRICE, "NO (Down)")
-                        
+
                         if trade_successful:
                             last_trade_interval = now.minute // 15
                             log_message(f"   - Trade placed for interval {last_trade_interval}. Waiting for next interval.")
